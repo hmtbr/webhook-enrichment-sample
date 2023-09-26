@@ -19,7 +19,7 @@ q = queue.Queue()
 
 # Extractors by regular expressions
 year_entity_extractor = re.compile('\d{4}')
-sentence_extractor = re.compile('\.\s*|!\s*|\?\s*')
+sentence_break_detector = re.compile('\.\s*|!\s*|\?\s*')
 transmission_extractor = re.compile('TRANSMISSION')
 slip_classifier = re.compile('SLIP')
 
@@ -56,7 +56,7 @@ def enrich(doc):
                 )
             # Sentence classification example
             sentence_start = 0
-            for matched in sentence_extractor.finditer(text):
+            for matched in sentence_break_detector.finditer(text):
                 sentence_end = matched.start() + 1
                 sentence_text = text[sentence_start:sentence_end]
                 if transmission_extractor.search(sentence_text):
@@ -118,28 +118,33 @@ def enrichment_worker():
         batch_api = f'{WD_API_URL}/v2/projects/{project_id}/collections/{collection_id}/batches/{batch_id}'
         params = {'version': version}
         auth = ('apikey', WD_API_KEY)
-        # Get documents from WD
-        response = requests.get(batch_api, params=params, auth=auth, stream=True)
-        status_code = response.status_code
-        app.logger.info('Pulled a batch: %s, status: %d', batch_id, status_code)
-        if status_code == 200:
-            # Annotate documents
-            enriched_docs = [enrich(json.loads(line)) for line in response.iter_lines()]
-            files = {
-                'file': (
-                    'data.ndjson.gz',
-                    gzip.compress(
-                        '\n'.join(
-                            [json.dumps(enriched_doc) for enriched_doc in enriched_docs]
-                        ).encode('utf-8')
-                    ),
-                    'application/x-ndjson'
-                )
-            }
-            # Upload annotated documents
-            response = requests.post(batch_api, params=params, files=files, auth=auth)
+        try:
+            # Get documents from WD
+            response = requests.get(batch_api, params=params, auth=auth, stream=True)
             status_code = response.status_code
-            app.logger.info('Pushed a batch: %s, status: %d', batch_id, status_code)
+            app.logger.info('Pulled a batch: %s, status: %d', batch_id, status_code)
+            if status_code == 200:
+                # Annotate documents
+                enriched_docs = [enrich(json.loads(line)) for line in response.iter_lines()]
+                files = {
+                    'file': (
+                        'data.ndjson.gz',
+                        gzip.compress(
+                            '\n'.join(
+                                [json.dumps(enriched_doc) for enriched_doc in enriched_docs]
+                            ).encode('utf-8')
+                        ),
+                        'application/x-ndjson'
+                    )
+                }
+                # Upload annotated documents
+                response = requests.post(batch_api, params=params, files=files, auth=auth)
+                status_code = response.status_code
+                app.logger.info('Pushed a batch: %s, status: %d', batch_id, status_code)
+        except Exception as e:
+            app.logger.error('An error occurred: %s', e)
+            # Retry
+            q.put(item)
 
 # Turn on the enrichment worker thread
 threading.Thread(target=enrichment_worker, daemon=True).start()
