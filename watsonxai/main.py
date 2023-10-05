@@ -73,8 +73,8 @@ Named Entities:
         if result == 'None':
             # No entity found
             return entities
-        for pair in re.split(',\s*', result):
-            text_type = re.split(':\s*', pair)
+        for pair in re.split(r',\s*', result):
+            text_type = re.split(r':\s*', pair)
             entities.append({'text': text_type[0], 'type': text_type[1]})
         return entities
     elif response.status_code == 401:
