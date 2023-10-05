@@ -69,6 +69,7 @@ Named Entities:
     response = requests.post(f'{WML_ENDPOINT_URL}/ml/v1-beta/generation/text', json=payload, params=params, headers=headers)
     if response.status_code == 200:
         result = response.json()['results'][0]['generated_text']
+        app.logger.info('LLM result: %s', result)
         entities = []
         if result == 'None':
             # No entity found
@@ -85,6 +86,7 @@ Named Entities:
         raise Exception(f'Failed to generate: {response.text}')
 
 def enrich(doc):
+    app.logger.info('doc: %s', doc)
     features_to_send = []
     for feature in doc['features']:
         # Target 'text' field
@@ -97,6 +99,7 @@ def enrich(doc):
         try:
             # Entity extraction example
             results = extract_entities(text)
+            app.logger.info('entities: %s', results)
             for entity in results:
                 entity_text = entity['text']
                 entity_type = entity['type']
